@@ -28,104 +28,138 @@
 #' cvs.biomarker (a numeric value representing the average CVS probability of a subject's lesions).
 #' @examples \dontrun{
 #' library(neurobase)
-#' epi <- readnii('path/to/epi')
-#' flair <- readnii('path/to/flair')
-#' t1 <- readnii('path/to/t1')
-#' cvs <- centralveins(epi = epi, t1 = t1, flair = flair
-#'                          parallel = TRUE, cores = 4, c3d = T) }
+#' epi <- readnii("path/to/epi")
+#' flair <- readnii("path/to/flair")
+#' t1 <- readnii("path/to/t1")
+#' cvs <- centralveins(
+#'   epi = epi, t1 = t1, flair = flair,
+#'   parallel = TRUE, cores = 4, c3d = T
+#' )
+#' }
 #' @export
-centralveins=function(epi,t1,flair,probmap=NULL,binmap=NULL,parallel=F,
-                      cores=2,skullstripped=F,biascorrected=F,c3d=T){
-  if(biascorrected==F){
-    epi=bias_correct(epi,correction="N4",reorient=F)
-    t1=bias_correct(t1,correction="N4",reorient=F)
-    flair=bias_correct(flair,correction="N4",reorient=F)
+centralveins <- function(epi, t1, flair, mask, 
+                         probmap = NULL, binmap = NULL, 
+                         parallel = F, cores = 2, 
+                         skullstripped = F, biascorrected = F, registered = F, 
+                         c3d = F) {
+  if (biascorrected == F) {
+    epi <- bias_correct(epi, correction = "N4", reorient = F)
+    t1 <- bias_correct(t1, correction = "N4", reorient = F)
+    flair <- bias_correct(flair, correction = "N4", reorient = F)
   }
-  flair=registration(filename=flair,template.file=t1,typeofTransform="Rigid",
-                     remove.warp=FALSE,outprefix="fun")
-  flair=flair$outfile
-
-  if(skullstripped==F){
-    t1_ss=fslbet_robust(t1,correct=F)
-    epi_ss=fslbet_robust(epi,correct=F)
-    flair_ss=flair
-    flair_ss[t1_ss==0]<-0
+  if (registered == F) {
+    flair <- registration(
+      filename = flair, template.file = t1, typeofTransform = "Rigid",
+      remove.warp = FALSE, outprefix = "fun"
+    )
+    flair <- flair$outfile
   }
-
-  frangi=frangi(image=epi_ss,mask=epi_ss!=0,parallel=parallel,cores=cores,c3d)
-  frangi[frangi<0]<-0
-
-  regs=labelreg(epi,t1,frangi)
-  epi_t1=regs$imagereg
-  frangi_t1=regs$labelreg
-  mask=t1!=0
-
-  if(is.null(probmap) & is.null(binmap)){
-    mimosa_data = mimosa_data(
+  
+  if (skullstripped == F) {
+    t1_ss <- fslbet_robust(t1, correct = F)
+    epi_ss <- fslbet_robust(epi, correct = F)
+    flair_ss <- flair
+    flair_ss[t1_ss == 0] <- 0
+  } else {
+    t1_ss <- t1
+    epi_ss <- epi
+    flair_ss <- flair
+  }
+  
+  frangi <- frangi(image = epi_ss, mask = epi_ss != 0, 
+                   parallel = parallel, cores = cores, c3d = c3d)
+  frangi[frangi < 0] <- 0
+  
+  if (registered == F) {
+    regs <- labelreg(epi, t1, frangi)
+    epi_t1 <- regs$imagereg
+    frangi_t1 <- regs$labelreg
+  } else {
+    epi_t1 <- epi
+    frangi_t1 <- frangi
+  }
+  
+  if (is.null(probmap)) {
+    mimosa_data <- mimosa_data(
       brain_mask = mask,
       FLAIR = flair_ss,
       T1 = t1_ss,
-      normalize = 'Z',
+      normalize = "Z",
       cores = cores,
-      verbose = TRUE)
-
-    mimosa_df = mimosa_data$mimosa_dataframe
-    mimosa_cm = mimosa_data$top_voxels
+      verbose = TRUE
+    )
+    
+    mimosa_df <- mimosa_data$mimosa_dataframe
+    mimosa_cm <- mimosa_data$top_voxels
     rm(mimosa_data)
-
-    predictions = predict(mimosa::mimosa_model_No_PD_T2,
-                          newdata = mimosa_df,type = 'response')
-    probmap = niftiarr(mask, 0)
-    probmap[mimosa_cm == 1] = predictions
-    probmap = fslsmooth(probmap,sigma = 1.25,mask = mask,
-                        retimg = TRUE,smooth_mask = TRUE)
+    
+    predictions <- predict(mimosa::mimosa_model_No_PD_T2,
+                           newdata = mimosa_df, type = "response"
+    )
+    probmap <- niftiarr(mask, 0)
+    probmap[mimosa_cm == 1] <- predictions
+    probmap <- fslsmooth(probmap,
+                         sigma = 1.25, mask = mask,
+                         retimg = TRUE, smooth_mask = TRUE
+    )
   }
-
-  les=lesioncenters(probmap,probmap>0.3,parallel=parallel,cores=cores)
-
-  csf=fast(t1,opts='--nobias')
-  csf[csf!=1]<-0
-  csf=ants2oro(labelClusters(oro2ants(csf),minClusterSize=300))
-  csf[csf>0]<-1
-  csf=(csf!=1)
-  csf=fslerode(csf, kopts = paste("-kernel boxv",3), verbose = TRUE)
-  csf=(csf==0)
-
-  lables=ants2oro(labelClusters(oro2ants(les),minClusterSize=27))
-  for(j in lables){
-    if(sum(csf[lables==j])>0){
-      lables[lables==j]<-0
+  
+  if (is.null(binmap)) {
+    binmap <- probmap
+    binmap[probmap >= 0.2] <- 1
+    binmap[probmap < 0.2] <- 0
+  }
+  
+  les <- lesioncenters(probmap, binmap, 
+                       parallel = parallel, 
+                       cores = cores, c3d = c3d)
+  
+  #csf <- fast(t1_orig, opts = "--nobias") # Doesn't work in my testing (FH)
+  csf <- fuzzySpatialCMeansSegmentation(oro2ants(t1), mask = oro2ants(mask), 
+                                        numberOfClusters = 3)$segmentationImage # Substitute for fast (1 = CSF)
+  csf[csf != 1] <- 0
+  csf <- ants2oro(labelClusters(csf, minClusterSize = 300))
+  csf[csf > 0] <- 1
+  csf <- (csf != 1)
+  csf <- fslerode(csf, kopts = paste("-kernel boxv", 3), verbose = TRUE)
+  csf <- (csf == 0) # End up with mask of large CSF clusters that are dilated
+  
+  labels <- les$lesioncenters # Already labeled...? FH
+  #labels <- ants2oro(labelClusters(oro2ants(les$lesioncenters), minClusterSize = 27))
+  
+  for (j in 1:max(labels)) {
+    if (sum(csf[labels == j]) > 0) {
+      labels[labels == j] <- 0
     }
   }
-  les=lables>0
-
-  dtb=dtboundary(les)
-
-  lables=ants2oro(labelClusters(oro2ants(les),minClusterSize=27))
-  probles=lables
-  avprob=NULL
-  maxles=max(as.vector(lables))
-  for(j in 1:maxles){
-    frangsub=frangi[lables==j]
-    centsub=dtb[lables==j]
-    coords=which(lables==j,arr.ind=T)
-    prod=frangsub*centsub
-    score=sum(prod)
-    nullscores=NULL
-    for(k in 1:1000){
-      samp=sample(1:length(centsub))
-      centsamp=centsub[samp]
-      coordsamp=coords[samp,]
-      sampprod=frangsub*centsamp
-      sampscore=sum(sampprod)
-      nullscores=c(nullscores,sampscore)
+  les <- labels > 0
+  dtb <- dtboundary(les)
+  
+  labels <- ants2oro(labelClusters(oro2ants(les), minClusterSize = 27))
+  probles <- labels
+  avprob <- NULL
+  maxles <- max(labels)
+  for (j in 1:maxles) {
+    frangsub <- frangi[labels == j]
+    centsub <- dtb[labels == j]
+    coords <- which(labels == j, arr.ind = T)
+    prod <- frangsub * centsub
+    score <- sum(prod)
+    nullscores <- NULL
+    for (k in 1:1000) {
+      samp <- sample(1:length(centsub))
+      centsamp <- centsub[samp]
+      coordsamp <- coords[samp, ]
+      sampprod <- frangsub * centsamp
+      sampscore <- sum(sampprod)
+      nullscores <- c(nullscores, sampscore)
     }
-    lesprob=sum(nullscores<score)/length(nullscores)
-    avprob=c(avprob,lesprob)
-    probles[lables==j]<-lesprob
-
-    print(paste0("Done with lesion ",j," of ",maxles))
+    lesprob <- sum(nullscores < score) / length(nullscores)
+    avprob <- c(avprob, lesprob)
+    probles[labels == j] <- lesprob
+    
+    print(paste0("Done with lesion ", j, " of ", maxles))
   }
-
-  return(list(candidate.lesions=lables,cvs.probmap=probles,cvs.biomarker=mean(avprob)))
+  
+  return(list(candidate.lesions = labels, cvs.probmap = probles, cvs.biomarker = mean(avprob)))
 }
