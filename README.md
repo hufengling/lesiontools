@@ -3,3 +3,5 @@
 [![](http://cranlogs.r-pkg.org/badges/grand-total/lesiontools)](https://cran.rstudio.com/web/packages/lesiontools/index.html)
 
 lesiontools is an R package with functions for statistical and computation analysis of MS lesions. It includes tools for obtaining image gradients and hessian matrices, finding veins in the brain, counting distinct lesions, and detecting central vein sign.
+
+This package is originally written by Jordan Dworkin. Maintenance/edits on this fork are performed by Fengling Hu
