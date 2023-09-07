@@ -17,9 +17,3 @@ URL: https://github.com/jdwor/lesiontools
 RoxygenNote: 7.2.3
 Imports: ANTsR, ANTsRCore, extrantsr, neurobase,
         mimosa, stats, fslr, oro.nifti, Rfast
-Suggests: covr, testthat
-biocViews:
-Remotes: 
-    neuroconductor/ANTsRCore,
-    neuroconductor/extrantsr,
-    neuroconductor/mimosa
