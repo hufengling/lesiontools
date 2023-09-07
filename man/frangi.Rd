@@ -4,8 +4,7 @@
 \alias{frangi}
 \title{Frangi Vesselness Filter}
 \usage{
-frangi(image, mask, radius = 1, color = "dark", parallel = FALSE,
-  cores = 2, c3d = F, min.scale = 0.5, max.scale = 0.5)
+frangi(image, mask, radius = 1, color = "dark")
 }
 \arguments{
 \item{image}{a 3D array or image of class \code{nifti}}
@@ -18,18 +17,6 @@ Note that mask should be in the same space as the image volume}
 Note that this value essentially serves as the scale of the vessel objects}
 
 \item{color}{a string specifying whether vessels will appear darker ("dark") or brighter ("bright") than their surroundings}
-
-\item{parallel}{is a logical value that indicates whether the user's computer
-is Linux or Unix (i.e. macOS), and should run the code in parallel}
-
-\item{cores}{if parallel = TRUE, cores is an integer value that indicates how many cores
-the function should be run on}
-
-\item{c3d}{a logical value reflecting whether or not the Convert3D imaging toolbox is installed.}
-
-\item{min.scale}{if c3d==T, the minimum scale in mm of the structures being found.}
-
-\item{max.scale}{if c3d==T, the maximum scale in mm of the structures being found.}
 }
 \value{
 A 3D volume of the Frangi vesselness scores.
@@ -40,10 +27,13 @@ This function returns a vesselness map for a 3D array or NIfTI volume. This vess
 \examples{
 \dontrun{
 library(neurobase)
-epi <- readnii('path/to/epi')
-mask <- epi!=0
-veins <- frangi(image = epi, mask = mask, radius = 1,
-                color = "dark", parallel = TRUE, cores = 4) }
+epi <- readnii("path/to/epi")
+mask <- epi != 0
+veins <- frangi(
+  image = epi, mask = mask, radius = 1,
+  color = "dark", parallel = TRUE, cores = 4
+)
+}
 }
 \references{
 A.F. Frangi, W.J. Niessen, K.L. Vincken, M.A. Viergever (1998). Multiscale vessel enhancement filtering. In Medical Image Computing and Computer-Assisted Intervention - MICCAI'98, W.M. Wells, A. Colchester and S.L. Delp (Eds.), Lecture Notes in Computer Science, vol. 1496 - Springer Verlag, Berlin, Germany, pp. 130-137.

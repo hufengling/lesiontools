@@ -24,8 +24,6 @@
 #' to be split. It uses the lesion center information to split the confluent lesions and returns a labeled
 #' image with the split lesions labeled distinctly.
 #'
-#' @importFrom lesiontools get_lesion_labels
-#'
 #' @export
 split_confluent <- function(i, labeled_image, lesion_center_image) {
   centers_in_label <- lesion_center_image[labeled_image == i]
@@ -36,8 +34,10 @@ split_confluent <- function(i, labeled_image, lesion_center_image) {
   }
 
   lesion <- labeled_image == i
-  split_lesion <- get_lesion_labels(lesion,
-                                    lesion_center_image * lesion)
+  split_lesion <- get_lesion_labels(
+    lesion,
+    lesion_center_image * lesion
+  )
   s <- unique(split_lesion[split_lesion != 0])
   for (i in 1:length(s)) {
     split_lesion[split_lesion == s[i]] <- i

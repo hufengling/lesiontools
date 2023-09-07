@@ -2,12 +2,11 @@
 #' @description This function is a helper function for lesion_identification(). It takes in a lesion segmentation mask and a NIfTI image with identified lesion centers.
 #' @param lesion_mask Lesion mask.
 #' @param centers Lesion center map. Provided by lesiontools::lesion_centers().
-#' 
+#'
 #' @export
-#' 
+#'
 #' @import Rfast
 #' @return A NIfTI with each lesion assigned to its closest lesion center
-
 get_lesion_labels <- function(lesion_mask, centers) {
   #### knn on mimosa segmentations ####
   inds.lab <- which(lesion_mask * centers > 0, arr.ind = TRUE) # labeled indices

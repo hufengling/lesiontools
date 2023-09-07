@@ -11,8 +11,9 @@
 #' @export
 dtboundary <- function(mask) {
   get.d.boundary.exact.balloon <- function(v, mask, d.max = 30) {
-    if (mask[v[1], v[2], v[3]] == 0)
+    if (mask[v[1], v[2], v[3]] == 0) {
       stop("ERROR! - voxel outside of mask...")
+    }
     r <- 1
     # expand balloon
     while (TRUE) {

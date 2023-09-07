@@ -30,7 +30,7 @@ hessian3D <- function(image, mask, radius = 1) {
   mask_voxels <- sum(mask)
   # pre-allocating memory for bigmat
   bigmat <- matrix(rep(0, 9 * mask_voxels),
-                   nrow = mask_voxels, ncol = 9
+    nrow = mask_voxels, ncol = 9
   )
   bigmat[, 1] <- gxx
   bigmat[, 2] <- gxy
@@ -54,7 +54,7 @@ hessian3D <- function(image, mask, radius = 1) {
 
   print("Calculating eigenvalues")
   result <- matrix(unlist(lapply(biglist, getevals)),
-                   nrow = 3
+    nrow = 3
   )
   e1 <- mask
   e1[mask == 1] <- result[1, ]

@@ -18,6 +18,7 @@ This function finds the distance of each voxel to the nearest boundary in a give
 \examples{
 \dontrun{
 library(neurobase)
-lesion.mask <- readnii('path/to/mask')
-dtb <- dtboundary(mask = lesion.mask) }
+lesion.mask <- readnii("path/to/mask")
+dtb <- dtboundary(mask = lesion.mask)
+}
 }

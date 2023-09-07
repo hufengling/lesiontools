@@ -26,25 +26,10 @@
 #' epi <- check_ants("path/to/epi")
 #' flair <- check_ants("path/to/flair")
 #' t1 <- check_ants("path/to/t1")
-#' cvs <- centralveins(
-#'   epi = epi, t1 = t1, flair = flair
-#' )
+#' cvs <- centralveins(epi = epi, t1 = t1, flair = flair)
 #' }
 #' @export
 #'
-library(ANTsR)
-library(extrantsr)
-library(fslr)
-library(mimosa)
-library(neurobase)
-data_dir <- "/home/fengling/Documents/prl/data/Zheng_data/01/01-002/before_processing/"
-epi <- check_ants(read_rpi(file.path(data_dir, "2-t2s_pre.nii.gz")))
-t1 <- check_ants(read_rpi(file.path(data_dir, "3D_T1_MPRAGE.nii.gz")))
-flair <- check_ants(read_rpi(file.path(data_dir, "3D_T2_FLAIR.nii.gz")))
-bias_correct <- T
-register <- T
-skull_strip = T
-verbose = FALSE
 central_veins <- function(epi, t1, flair,
                           prob_map = NULL, bin_map = NULL,
                           verbose = FALSE,
@@ -72,10 +57,12 @@ central_veins <- function(epi, t1, flair,
     bin_map <- NULL
   }
   if (!is.null(prob_map) & !is.null(bin_map)) {
-    if (class(prob_map) == "nifti")
+    if (class(prob_map) == "nifti") {
       prob_map <- oro2ants(prob_map)
-    if (class(bin_map) == "nifti")
+    }
+    if (class(bin_map) == "nifti") {
       bin_map <- oro2ants(bin_map)
+    }
     if (!antsSameMetadata(prob_map, bin_map)) {
       warning("bin_map is not in same space as prob_map. Thresholding prob_map at 0.2")
       bin_map <- prob_map >= 0.3
@@ -106,47 +93,71 @@ central_veins <- function(epi, t1, flair,
   # Registration
   if (register == F & !(antsSameMetadata(t1, flair) & antsSameMetadata(t1, epi))) {
     warning("T1, FLAIR, and EPI images are not in the same space. Re-registering images.")
-    register = T
+    register <- T
   }
   if (register == T) {
     if (verbose) {
       print("Registering images")
     }
     if (prob_map_space == "none" | prob_map_space == "epi") { # If prob_map not provided, register to epi space
-      t1_registration <- antsRegistration(fixed = epi, moving = t1,
-                                          typeofTransform = "Rigid")
-      t1 <- antsApplyTransforms(fixed = epi, moving = t1,
-                                transformlist = t1_registration$fwdtransform,
-                                interpolator = "lanczosWindowedSinc")
-      flair_registration <- antsRegistration(fixed = epi, moving = flair,
-                                             typeofTransform = "Rigid")
-      flair <- antsApplyTransforms(fixed = epi, moving = flair,
-                                   transformlist = flair_registration$fwdtransform,
-                                   interpolator = "lanczosWindowedSinc")
+      t1_registration <- antsRegistration(
+        fixed = epi, moving = t1,
+        typeofTransform = "Rigid"
+      )
+      t1 <- antsApplyTransforms(
+        fixed = epi, moving = t1,
+        transformlist = t1_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
+      flair_registration <- antsRegistration(
+        fixed = epi, moving = flair,
+        typeofTransform = "Rigid"
+      )
+      flair <- antsApplyTransforms(
+        fixed = epi, moving = flair,
+        transformlist = flair_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
     }
     if (prob_map_space == "t1") { # If prob_map in t1 space, register to t1
-      epi_registration <- antsRegistration(fixed = t1, moving = epi,
-                                           typeofTransform = "Rigid")
-      epi <- antsApplyTransforms(fixed = t1, moving = epi,
-                                 transformlist = epi_registration$fwdtransform,
-                                 interpolator = "lanczosWindowedSinc")
-      flair_registration <- antsRegistration(fixed = t1, moving = flair,
-                                             typeofTransform = "Rigid")
-      flair <- antsApplyTransforms(fixed = t1, moving = flair,
-                                   transformlist = flair_registration$fwdtransform,
-                                   interpolator = "lanczosWindowedSinc")
+      epi_registration <- antsRegistration(
+        fixed = t1, moving = epi,
+        typeofTransform = "Rigid"
+      )
+      epi <- antsApplyTransforms(
+        fixed = t1, moving = epi,
+        transformlist = epi_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
+      flair_registration <- antsRegistration(
+        fixed = t1, moving = flair,
+        typeofTransform = "Rigid"
+      )
+      flair <- antsApplyTransforms(
+        fixed = t1, moving = flair,
+        transformlist = flair_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
     }
     if (prob_map_space == "flair") { # If prob_map in t1 space, register to t1
-      epi_registration <- antsRegistration(fixed = flair, moving = epi,
-                                           typeofTransform = "Rigid")
-      epi <- antsApplyTransforms(fixed = flair, moving = epi,
-                                 transformlist = epi_registration$fwdtransform,
-                                 interpolator = "lanczosWindowedSinc")
-      t1_registration <- antsRegistration(fixed = flair, moving = t1,
-                                          typeofTransform = "Rigid")
-      t1 <- antsApplyTransforms(fixed = flair, moving = t1,
-                                transformlist = t1_registration$fwdtransform,
-                                interpolator = "lanczosWindowedSinc")
+      epi_registration <- antsRegistration(
+        fixed = flair, moving = epi,
+        typeofTransform = "Rigid"
+      )
+      epi <- antsApplyTransforms(
+        fixed = flair, moving = epi,
+        transformlist = epi_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
+      t1_registration <- antsRegistration(
+        fixed = flair, moving = t1,
+        typeofTransform = "Rigid"
+      )
+      t1 <- antsApplyTransforms(
+        fixed = flair, moving = t1,
+        transformlist = t1_registration$fwdtransform,
+        interpolator = "lanczosWindowedSinc"
+      )
     }
   }
 
@@ -187,18 +198,20 @@ central_veins <- function(epi, t1, flair,
     )
 
     predictions <- predict(mimosa::mimosa_model_No_PD_T2,
-                           newdata = mimosa_data$mimosa_dataframe,
-                           type = "response")
+      newdata = mimosa_data$mimosa_dataframe,
+      type = "response"
+    )
     prob_map <- niftiarr(mask, 0)
     prob_map[mimosa_data$top_voxels == 1] <- predictions
     prob_map <- oro2ants(fslsmooth(prob_map,
-                                   sigma = 1.25, mask = mask,
-                                   retimg = TRUE, smooth_mask = TRUE))
+      sigma = 1.25, mask = mask,
+      retimg = TRUE, smooth_mask = TRUE
+    ))
     bin_map <- prob_map >= 0.3
   }
 
-  les <- lesion_centers(prob_map, bin_map)
-  labels <- antsImageClone(les$lesioncenters)
+  les <- label_lesion(prob_map, bin_map)
+  labels <- antsImageClone(les)
 
   if (sum(csf * labels) > 0) {
     for (j in 1:max(labels)) {

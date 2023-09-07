@@ -18,12 +18,13 @@
 #' @export
 #' @references J.D. Dworkin, K.A. Linn, I. Oguz, G.M. Fleishman, R. Bakshi, G. Nair, P.A. Calabresi, R.G. Henry, J. Oh, N. Papinutto, D. Pelletier, W. Rooney, W. Stern, N.L. Sicotte, D.S. Reich, R.T. Shinohara. An automated statistical technique for counting distinct multiple sclerosis lesions. American Journal of Neuroradiology, 2018; 39, 626-633.
 lesion_centers <- function(prob_map, bin_map,
-                           minCenterSize = 10, radius = 1,
-                           parallel = F, cores = 2) {
+                           minCenterSize = 10, radius = 1) {
   prob_map_oro <- ants2oro(prob_map)
   scale <- ceiling((1 / mean(prob_map_oro@pixdim[2:4]))^3)
-  phes <- hessian3D(image = prob_map_oro, mask = ants2oro(bin_map),
-                    radius)
+  phes <- hessian3D(
+    image = prob_map_oro, mask = ants2oro(bin_map),
+    radius
+  )
   phes1 <- phes$eigval1
   phes2 <- phes$eigval2
   phes3 <- phes$eigval3
