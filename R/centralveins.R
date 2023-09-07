@@ -1,146 +1,229 @@
 #' @title Central Vein Detection
 #' @description This function obtains the probability that each lesion in a subject's deep white-matter has a central vein.
-#' @param epi a T2*-EPI volume of class \code{nifti}.
-#' @param t1 a T1-weighted volume of class \code{nifti}.
-#' @param flair a T2-FLAIR volume of class \code{nifti}.
-#' @param probmap an image of class \code{nifti}, containing the probability that each voxel
-#' is a lesion voxel.
+#' @param epi T2*-EPI volume of class \code{antsImage}, class \code{nifti}, or path to ".nii.gz" file.
+#' @param t1 T1-weighted volume of class \code{antsImage}, class \code{nifti}, or path to ".nii.gz" file.
+#' @param flair T2-FLAIR volume of class \code{antsImage}, class \code{nifti}, or path to ".nii.gz" file.
+#' @param prob_map volume of class \code{antsImage}, class \code{nifti},  or path to ".nii.gz" file containing the probability that each voxel is a lesion voxel.
 #' If a probability map is not included, the MIMoSA model will be applied (Valcarcel et al., 2017).
-#' @param binmap a \code{nifti} mask in which voxels are classified as either lesion voxels
-#' or not lesion voxels.
-#' Note that mask should be in the same space as the probmap volume.
-#' @param parallel is a logical value that indicates whether the user's computer
-#' is Linux or Unix (i.e. macOS), and should run the code in parallel.
-#' @param cores if parallel = TRUE, cores is an integer value that indicates how many cores
-#' the function should be run on.
-#' @param skullstripped a logical value reflecting whether or not the images have already been skull-stripped.
-#' @param biascorrected a logical value reflecting whether or not the images have already been bias-corrected.
-#' @param c3d a logical value reflecting whether or not the Convert3D imaging toolbox is installed.
+#' @param bin_map binarized volume of class\code{antsImage}, class \code{nifti}, or path to ".nii.gz" file. Mask in which voxels are classified as either lesion voxels or not lesion voxels.
+#' @param verbose logical value for printing pipeline updates (default = FALSE)
+#' @param bias_correct a logical value reflecting whether bias correction still needs to be performed (default = TRUE)
+#' @param register a logical value reflecting whether images still need to be registered (default = TRUE)
+#' @param skull_strip a logical value reflecting whether skull stripping still needs to be performed (default = TRUE)
 #'
-#' @importFrom ANTsRCore labelClusters
+#' @import ANTsR
+#' @import ANTsRCore
 #' @importFrom neurobase niftiarr
 #' @import mimosa
-#' @importFrom extrantsr ants2oro oro2ants bias_correct registration fslbet_robust
+#' @importFrom extrantsr ants2oro oro2ants fslbet_robust
 #' @importFrom stats predict
 #' @importFrom fslr fslsmooth fast fslerode
 #' @return A list containing candidate.lesions (a nifti file with labeled lesions evaluated for CVS),
-#' cvs.probmap (a nifti file in which candidate lesions are labeled with their CVS probability), and
+#' cvs.prob_map (a nifti file in which candidate lesions are labeled with their CVS probability), and
 #' cvs.biomarker (a numeric value representing the average CVS probability of a subject's lesions).
 #' @examples \dontrun{
-#' library(neurobase)
-#' epi <- readnii("path/to/epi")
-#' flair <- readnii("path/to/flair")
-#' t1 <- readnii("path/to/t1")
+#' library(ANTsRCore)
+#' epi <- check_ants("path/to/epi")
+#' flair <- check_ants("path/to/flair")
+#' t1 <- check_ants("path/to/t1")
 #' cvs <- centralveins(
-#'   epi = epi, t1 = t1, flair = flair,
-#'   parallel = TRUE, cores = 4, c3d = T
+#'   epi = epi, t1 = t1, flair = flair
 #' )
 #' }
 #' @export
-centralveins <- function(epi, t1, flair, mask, 
-                         probmap = NULL, binmap = NULL, 
-                         parallel = F, cores = 2, 
-                         skullstripped = F, biascorrected = F, registered = F, 
-                         c3d = F) {
-  if (biascorrected == F) {
-    epi <- bias_correct(epi, correction = "N4", reorient = F)
-    t1 <- bias_correct(t1, correction = "N4", reorient = F)
-    flair <- bias_correct(flair, correction = "N4", reorient = F)
+#'
+library(ANTsR)
+library(extrantsr)
+library(fslr)
+library(mimosa)
+library(neurobase)
+data_dir <- "/home/fengling/Documents/prl/data/Zheng_data/01/01-002/before_processing/"
+epi <- check_ants(read_rpi(file.path(data_dir, "2-t2s_pre.nii.gz")))
+t1 <- check_ants(read_rpi(file.path(data_dir, "3D_T1_MPRAGE.nii.gz")))
+flair <- check_ants(read_rpi(file.path(data_dir, "3D_T2_FLAIR.nii.gz")))
+bias_correct <- T
+register <- T
+skull_strip = T
+verbose = FALSE
+central_veins <- function(epi, t1, flair,
+                          prob_map = NULL, bin_map = NULL,
+                          verbose = FALSE,
+                          bias_correct = TRUE, register = TRUE, skull_strip = TRUE) {
+  # Reading file path or converting nifti to antsImage
+  epi <- check_ants(epi)
+  t1 <- check_ants(t1)
+  flair <- check_ants(flair)
+
+  antsSameMetadata <- function(ants1, ants2) {
+    same_direction <- all(antsGetDirection(ants1) == antsGetDirection(ants2))
+    same_origin <- all(antsGetOrigin(ants1) == antsGetOrigin(ants2))
+    same_spacing <- all(antsGetSpacing(ants1) == antsGetSpacing(ants2))
+    return(same_direction & same_origin & same_spacing)
   }
-  if (registered == F) {
-    flair <- registration(
-      filename = flair, template.file = t1, typeofTransform = "Rigid",
-      remove.warp = FALSE, outprefix = "fun"
-    )
-    flair <- flair$outfile
+
+  # Processing prob_map and bin_map
+  prob_map_space <- "none"
+  if (!is.null(prob_map) & is.null(bin_map)) {
+    warning("If prob_map is provided without bin_map. Thresholding prob_map at 0.2")
+    bin_map <- prob_map >= 0.3
   }
-  
-  if (skullstripped == F) {
-    t1_ss <- fslbet_robust(t1, correct = F)
-    epi_ss <- fslbet_robust(epi, correct = F)
-    flair_ss <- flair
-    flair_ss[t1_ss == 0] <- 0
+  if (is.null(prob_map) & !is.null(bin_map)) {
+    warning("bin_map cannot be provided without prob_map. prob_map and bin_map will be recalculated using MIMoSA")
+    bin_map <- NULL
+  }
+  if (!is.null(prob_map) & !is.null(bin_map)) {
+    if (class(prob_map) == "nifti")
+      prob_map <- oro2ants(prob_map)
+    if (class(bin_map) == "nifti")
+      bin_map <- oro2ants(bin_map)
+    if (!antsSameMetadata(prob_map, bin_map)) {
+      warning("bin_map is not in same space as prob_map. Thresholding prob_map at 0.2")
+      bin_map <- prob_map >= 0.3
+    }
+    if (antsSameMetadata(prob_map, t1)) {
+      prob_map_space <- "t1"
+    } else if (antsSameMetadata(prob_map, flair)) {
+      prob_map_space <- "flair"
+    } else if (antsSameMetadata(prob_map, epi)) {
+      prob_map_space <- "epi"
+    } else {
+      warning("Prob_map is not in the same space as t1, flair, or epi. prob_map and bin_map will be recalculated using MIMoSA")
+      prob_map <- NULL
+      bin_map <- NULL
+    }
+  }
+
+  # Bias correction
+  if (bias_correct == T) {
+    if (verbose) {
+      print("Performing N4 bias correction")
+    }
+    epi <- n4BiasFieldCorrection(epi)
+    t1 <- n4BiasFieldCorrection(t1)
+    flair <- n4BiasFieldCorrection(flair)
+  }
+
+  # Registration
+  if (register == F & !(antsSameMetadata(t1, flair) & antsSameMetadata(t1, epi))) {
+    warning("T1, FLAIR, and EPI images are not in the same space. Re-registering images.")
+    register = T
+  }
+  if (register == T) {
+    if (verbose) {
+      print("Registering images")
+    }
+    if (prob_map_space == "none" | prob_map_space == "epi") { # If prob_map not provided, register to epi space
+      t1_registration <- antsRegistration(fixed = epi, moving = t1,
+                                          typeofTransform = "Rigid")
+      t1 <- antsApplyTransforms(fixed = epi, moving = t1,
+                                transformlist = t1_registration$fwdtransform,
+                                interpolator = "lanczosWindowedSinc")
+      flair_registration <- antsRegistration(fixed = epi, moving = flair,
+                                             typeofTransform = "Rigid")
+      flair <- antsApplyTransforms(fixed = epi, moving = flair,
+                                   transformlist = flair_registration$fwdtransform,
+                                   interpolator = "lanczosWindowedSinc")
+    }
+    if (prob_map_space == "t1") { # If prob_map in t1 space, register to t1
+      epi_registration <- antsRegistration(fixed = t1, moving = epi,
+                                           typeofTransform = "Rigid")
+      epi <- antsApplyTransforms(fixed = t1, moving = epi,
+                                 transformlist = epi_registration$fwdtransform,
+                                 interpolator = "lanczosWindowedSinc")
+      flair_registration <- antsRegistration(fixed = t1, moving = flair,
+                                             typeofTransform = "Rigid")
+      flair <- antsApplyTransforms(fixed = t1, moving = flair,
+                                   transformlist = flair_registration$fwdtransform,
+                                   interpolator = "lanczosWindowedSinc")
+    }
+    if (prob_map_space == "flair") { # If prob_map in t1 space, register to t1
+      epi_registration <- antsRegistration(fixed = flair, moving = epi,
+                                           typeofTransform = "Rigid")
+      epi <- antsApplyTransforms(fixed = flair, moving = epi,
+                                 transformlist = epi_registration$fwdtransform,
+                                 interpolator = "lanczosWindowedSinc")
+      t1_registration <- antsRegistration(fixed = flair, moving = t1,
+                                          typeofTransform = "Rigid")
+      t1 <- antsApplyTransforms(fixed = flair, moving = t1,
+                                transformlist = t1_registration$fwdtransform,
+                                interpolator = "lanczosWindowedSinc")
+    }
+  }
+
+  # Skull stripping
+  if (skull_strip == T) {
+    if (verbose) {
+      print("Performing FSL robust BET")
+    }
+    t1_ss <- fslbet_robust(ants2oro(t1), correct = F, verbose = F)
+    mask <- t1_ss != 0
+
+    t1 <- t1 * mask
+    flair <- flair * mask
+    epi <- epi * mask
   } else {
-    t1_ss <- t1
-    epi_ss <- epi
-    flair_ss <- flair
+    mask <- ants2oro(t1 != 0)
   }
-  
-  frangi <- frangi(image = epi_ss, mask = epi_ss != 0, 
-                   parallel = parallel, cores = cores, c3d = c3d)
-  frangi[frangi < 0] <- 0
-  
-  if (registered == F) {
-    regs <- labelreg(epi, t1, frangi)
-    epi_t1 <- regs$imagereg
-    frangi_t1 <- regs$labelreg
-  } else {
-    epi_t1 <- epi
-    frangi_t1 <- frangi
-  }
-  
-  if (is.null(probmap)) {
-    mimosa_data <- mimosa_data(
-      brain_mask = mask,
-      FLAIR = flair_ss,
-      T1 = t1_ss,
-      normalize = "Z",
-      cores = cores,
-      verbose = TRUE
-    )
-    
-    mimosa_df <- mimosa_data$mimosa_dataframe
-    mimosa_cm <- mimosa_data$top_voxels
-    rm(mimosa_data)
-    
-    predictions <- predict(mimosa::mimosa_model_No_PD_T2,
-                           newdata = mimosa_df, type = "response"
-    )
-    probmap <- niftiarr(mask, 0)
-    probmap[mimosa_cm == 1] <- predictions
-    probmap <- fslsmooth(probmap,
-                         sigma = 1.25, mask = mask,
-                         retimg = TRUE, smooth_mask = TRUE
-    )
-  }
-  
-  if (is.null(binmap)) {
-    binmap <- probmap
-    binmap[probmap >= 0.2] <- 1
-    binmap[probmap < 0.2] <- 0
-  }
-  
-  les <- lesioncenters(probmap, binmap, 
-                       parallel = parallel, 
-                       cores = cores, c3d = c3d)
-  
-  #csf <- fast(t1_orig, opts = "--nobias") # Doesn't work in my testing (FH)
-  csf <- fuzzySpatialCMeansSegmentation(oro2ants(t1), mask = oro2ants(mask), 
-                                        numberOfClusters = 3)$segmentationImage # Substitute for fast (1 = CSF)
+
+  csf <- fast(ants2oro(t1), opts = "--nobias", verbose = verbose)
   csf[csf != 1] <- 0
   csf <- ants2oro(labelClusters(csf, minClusterSize = 300))
   csf[csf > 0] <- 1
   csf <- (csf != 1)
   csf <- fslerode(csf, kopts = paste("-kernel boxv", 3), verbose = TRUE)
-  csf <- (csf == 0) # End up with mask of large CSF clusters that are dilated
-  
-  labels <- les$lesioncenters # Already labeled...? FH
-  #labels <- ants2oro(labelClusters(oro2ants(les$lesioncenters), minClusterSize = 27))
-  
-  for (j in 1:max(labels)) {
-    if (sum(csf[labels == j]) > 0) {
-      labels[labels == j] <- 0
+  csf <- (csf == 0)
+
+  # MIMoSA
+  if (is.null(prob_map)) {
+    if (verbose) {
+      print("Calculating MIMoSA prob_map")
+    }
+    mimosa_data <- mimosa_data(
+      brain_mask = mask,
+      FLAIR = ants2oro(flair),
+      T1 = ants2oro(t1),
+      normalize = "WS",
+      verbose = verbose
+    )
+
+    predictions <- predict(mimosa::mimosa_model_No_PD_T2,
+                           newdata = mimosa_data$mimosa_dataframe,
+                           type = "response")
+    prob_map <- niftiarr(mask, 0)
+    prob_map[mimosa_data$top_voxels == 1] <- predictions
+    prob_map <- oro2ants(fslsmooth(prob_map,
+                                   sigma = 1.25, mask = mask,
+                                   retimg = TRUE, smooth_mask = TRUE))
+    bin_map <- prob_map >= 0.3
+  }
+
+  les <- lesion_centers(prob_map, bin_map)
+  labels <- antsImageClone(les$lesioncenters)
+
+  if (sum(csf * labels) > 0) {
+    for (j in 1:max(labels)) {
+      tmp_label_mask <- labels == j
+      if (sum(csf * tmp_label_mask) > 0) {
+        print(j)
+        labels[tmp_label_mask] <- 0
+      }
     }
   }
-  les <- labels > 0
-  dtb <- dtboundary(les)
-  
-  labels <- ants2oro(labelClusters(oro2ants(les), minClusterSize = 27))
-  probles <- labels
+
+  lesion_mask <- antsImageClone(labels) > 0
+  dtb <- dtboundary(ants2oro(lesion_mask))
+
+  # Running Central Veins on pre-processed data
+  frangi_image <- frangi(image = ants2oro(epi), mask = mask)
+  frangi_image[frangi_image < 0] <- 0
+
+  # Permutation testing
+  labels <- labelClusters(lesion_mask, minClusterSize = 27)
+  probles <- antsImageClone(labels)
   avprob <- NULL
   maxles <- max(labels)
   for (j in 1:maxles) {
-    frangsub <- frangi[labels == j]
+    frangsub <- frangi_image[labels == j]
     centsub <- dtb[labels == j]
     coords <- which(labels == j, arr.ind = T)
     prod <- frangsub * centsub
@@ -157,9 +240,9 @@ centralveins <- function(epi, t1, flair, mask,
     lesprob <- sum(nullscores < score) / length(nullscores)
     avprob <- c(avprob, lesprob)
     probles[labels == j] <- lesprob
-    
+
     print(paste0("Done with lesion ", j, " of ", maxles))
   }
-  
-  return(list(candidate.lesions = labels, cvs.probmap = probles, cvs.biomarker = mean(avprob)))
+
+  return(list(candidate.lesions = labels, cvs.prob_map = probles, cvs.biomarker = mean(avprob)))
 }
