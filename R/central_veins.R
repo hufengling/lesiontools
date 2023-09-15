@@ -193,7 +193,7 @@ central_veins <- function(epi, t1, flair,
       brain_mask = mask,
       FLAIR = ants2oro(flair),
       T1 = ants2oro(t1),
-      normalize = "WS",
+      normalize = "Z",
       verbose = verbose
     )
 
