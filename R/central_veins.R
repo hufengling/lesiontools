@@ -49,7 +49,7 @@ central_veins <- function(epi, t1, flair,
   # Processing prob_map and bin_map
   prob_map_space <- "none"
   if (!is.null(prob_map) & is.null(bin_map)) {
-    warning("If prob_map is provided without bin_map. Thresholding prob_map at 0.2")
+    warning("If prob_map is provided without bin_map. Thresholding prob_map at 0.3")
     bin_map <- prob_map >= 0.3
   }
   if (is.null(prob_map) & !is.null(bin_map)) {
