@@ -64,7 +64,7 @@ central_veins <- function(epi, t1, flair,
       bin_map <- oro2ants(bin_map)
     }
     if (!antsSameMetadata(prob_map, bin_map)) {
-      warning("bin_map is not in same space as prob_map. Thresholding prob_map at 0.2")
+      warning("bin_map is not in same space as prob_map. Thresholding prob_map at 0.3")
       bin_map <- prob_map >= 0.3
     }
     if (antsSameMetadata(prob_map, epi)) {
@@ -177,7 +177,7 @@ central_veins <- function(epi, t1, flair,
       brain_mask = mask,
       FLAIR = ants2oro(flair),
       T1 = ants2oro(t1),
-      normalize = "WS",
+      normalize = "Z",
       verbose = verbose
     )
 
@@ -194,6 +194,11 @@ central_veins <- function(epi, t1, flair,
     bin_map <- prob_map >= 0.3
   }
 
+  if (sum(bin_map) == 0) {
+    warning("No lesions detected")
+    return(NULL)
+  }
+  
   les <- label_lesion(prob_map, bin_map)
   labels <- antsImageClone(les)
 
@@ -210,15 +215,21 @@ central_veins <- function(epi, t1, flair,
   lesion_mask <- antsImageClone(labels) > 0
   dtb <- dtboundary(ants2oro(lesion_mask))
 
-  # Running Central Veins on pre-processed data
-  frangi_image <- frangi(image = ants2oro(epi), mask = mask)
-  frangi_image[frangi_image < 0] <- 0
-
   # Permutation testing
   labels <- labelClusters(lesion_mask, minClusterSize = 27)
   probles <- antsImageClone(labels)
   avprob <- NULL
   maxles <- max(labels)
+
+  if (maxles == 0) {
+    warning("No identified lesions were large enough to consider for CVS detection.")
+    return(NULL)
+  }
+
+  # Calculate "lesionness"
+  frangi_image <- frangi(image = ants2oro(epi), mask = mask)
+  frangi_image[frangi_image < 0] <- 0
+
   for (j in 1:maxles) {
     frangsub <- frangi_image[labels == j]
     centsub <- dtb[labels == j]
