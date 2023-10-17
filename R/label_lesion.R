@@ -61,5 +61,12 @@ label_lesion <- function(prob_map, bin_map, mincluster = 100) {
     current_lesion_count <- current_lesion_count + max(non_zero)
     sum_mask <- sum_mask + mask
   }
+
+  cluster_sizes <- table(sum_mask[sum_mask != 0])
+  for (i in 1:length(cluster_sizes)) {
+    if (cluster_sizes[i] < mincluster) {
+      sum_mask[sum_mask == names(cluster_sizes)[i]] <- 0
+    }  
+  }
   return(sum_mask)
 }
