@@ -52,9 +52,9 @@ label_lesion <- function(prob_map, bin_map, mincluster = 100) {
     lesion_center_image = ants2oro(lesion_center_image)
   )
 
-  subimg_counts <- lapply(subimg, function(img) {
+  subimg_counts <- unlist(lapply(subimg, function(img) {
     return(sum(img != 0) >= mincluster)
-  })
+  }))
 
   subimg <- subimg[subimg_counts]
 
@@ -67,6 +67,6 @@ label_lesion <- function(prob_map, bin_map, mincluster = 100) {
     current_lesion_count <- current_lesion_count + max(non_zero)
     sum_mask <- sum_mask + mask
   }
-                   
+
   return(sum_mask)
 }
