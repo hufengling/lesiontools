@@ -25,22 +25,28 @@
 #' image with the split lesions labeled distinctly.
 #'
 #' @export
-split_confluent <- function(i, labeled_image, lesion_center_image) {
-  centers_in_label <- lesion_center_image[labeled_image == i]
+split_confluent <- function(i, labeled_image, lesion_center_image, mincluster) {
+  lesion <- labeled_image == i
+  centers_in_label <- lesion_center_image[lesion]
   n_centers <- unique(centers_in_label[centers_in_label != 0])
 
-  if (length(n_centers) == 0) {
-    return(labeled_image == i)
+  if (length(centers_in_label) < mincluster) {
+    return(NULL)
+  }
+  
+  if (length(n_centers) <= 1) {
+    return(lesion)
   }
 
-  lesion <- labeled_image == i
   split_lesion <- get_lesion_labels(
     lesion,
     lesion_center_image * lesion
   )
-  s <- unique(split_lesion[split_lesion != 0])
-  for (j in 1:length(s)) {
-    split_lesion[split_lesion == s[j]] <- j
+  s <- table(split_lesion[split_lesion != 0])
+  s_large <- s[s >= mincluster]
+  
+  for (j in 1:length(s_large)) { # relabel to start from 1 and count up continuously
+    split_lesion[split_lesion == as.numeric(names(s_large)[j])] <- j
   }
   return(split_lesion)
 }
