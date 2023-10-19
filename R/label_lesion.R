@@ -47,11 +47,13 @@ label_lesion <- function(prob_map, bin_map, mincluster = 100) {
     minCenterSize = mincluster / 10, radius = 1
   )$lesioncenters
 
+  print("Splitting lesions")
   subimg <- lapply(lesion_count, split_confluent,
     labeled_image = ants2oro(labeled_image),
     lesion_center_image = ants2oro(lesion_center_image)
   )
 
+  print("Making lesion mask")
   current_lesion_count <- max(subimg[[1]])
   sum_mask <- oro2ants(subimg[[1]])
   for (i in 2:length(subimg)) {
